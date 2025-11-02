@@ -1,0 +1,257 @@
+# User API Contract
+
+**Version**: 1.0  
+**Last Updated**: 2025-11-02
+
+This contract defines the User API interface. Generated types are read-only.
+
+---
+
+## Overview
+
+The User API handles user account management including creation, authentication, and profile updates.
+
+---
+
+## Entities
+
+### User
+```yaml
+User:
+  id: string (UUID)
+  email: string (unique, validated)
+  name: string
+  createdAt: timestamp
+  updatedAt: timestamp
+  status: enum [active, inactive, suspended]
+```
+
+---
+
+## Operations
+
+### Create User
+```yaml
+POST /api/users
+
+Request:
+  email: string (required, must be valid email)
+  name: string (required, 2-100 chars)
+  password: string (required, min 8 chars)
+
+Response:
+  201 Created:
+    user: User (without password)
+    token: string (JWT)
+  
+  400 Bad Request:
+    error: string
+    field: string (which field failed validation)
+  
+  409 Conflict:
+    error: "Email already exists"
+```
+
+### Get User
+```yaml
+GET /api/users/:id
+
+Request:
+  id: string (UUID in path)
+  Authorization: Bearer {token}
+
+Response:
+  200 OK:
+    user: User
+  
+  404 Not Found:
+    error: "User not found"
+  
+  401 Unauthorized:
+    error: "Invalid or missing token"
+```
+
+### Update User
+```yaml
+PATCH /api/users/:id
+
+Request:
+  id: string (UUID in path)
+  Authorization: Bearer {token}
+  Body:
+    name?: string (optional, 2-100 chars)
+    email?: string (optional, must be valid email)
+
+Response:
+  200 OK:
+    user: User (updated)
+  
+  400 Bad Request:
+    error: string
+    field: string
+  
+  409 Conflict:
+    error: "Email already exists"
+```
+
+### Delete User
+```yaml
+DELETE /api/users/:id
+
+Request:
+  id: string (UUID in path)
+  Authorization: Bearer {token}
+
+Response:
+  204 No Content
+  
+  404 Not Found:
+    error: "User not found"
+```
+
+---
+
+## Implementation Guidance
+
+### Domain Layer (`src/domain/user/`)
+```
+Create:
+- User.ts                 # Entity with validation
+- UserValidation.ts       # Email, name validation logic
+- UserStatus.ts           # Status enum and transitions
+```
+
+### App Layer (`src/app/users/`)
+```
+Create:
+- CreateUserHandler.ts    # POST /api/users
+- GetUserHandler.ts       # GET /api/users/:id
+- UpdateUserHandler.ts    # PATCH /api/users/:id
+- DeleteUserHandler.ts    # DELETE /api/users/:id
+```
+
+### Infra Layer (`src/infra/users/`)
+```
+Create:
+- UserRepository.ts       # Database operations
+- UserTokenService.ts     # JWT generation/validation
+```
+
+### Tests (`tests/`)
+```
+Create:
+- domain/User.test.ts
+- domain/UserValidation.test.ts
+- app/CreateUserHandler.test.ts
+- app/GetUserHandler.test.ts
+- infra/UserRepository.test.ts
+```
+
+---
+
+## Validation Rules
+
+### Email
+- Required for creation
+- Must contain '@' and '.'
+- Must be unique in system
+- Max 255 characters
+
+### Name
+- Required for creation
+- Min 2 characters
+- Max 100 characters
+- No special validation rules
+
+### Password
+- Required for creation
+- Min 8 characters
+- Should be hashed before storage (use bcrypt)
+- Never returned in responses
+
+---
+
+## Business Rules
+
+1. **User Creation**
+   - Email must be unique
+   - Password must be hashed
+   - Default status is 'active'
+   - Created/updated timestamps set automatically
+
+2. **User Updates**
+   - Can only update own profile (or admin)
+   - Email changes must be re-validated
+   - Cannot change user ID or timestamps
+
+3. **User Deletion**
+   - Soft delete (set status to 'inactive')
+   - Can only delete own account (or admin)
+   - Cascade delete related data
+
+4. **Authentication**
+   - JWT token expires after 24 hours
+   - Token contains user ID and email
+   - Token must be in Authorization header
+
+---
+
+## Error Handling
+
+All errors should include:
+```json
+{
+  "error": "Human-readable error message",
+  "code": "MACHINE_READABLE_CODE",
+  "field": "optional_field_name"
+}
+```
+
+Common error codes:
+- `VALIDATION_ERROR` - Invalid input
+- `NOT_FOUND` - Resource doesn't exist
+- `UNAUTHORIZED` - Missing/invalid auth
+- `CONFLICT` - Duplicate resource
+- `INTERNAL_ERROR` - Server error
+
+---
+
+## Notes for Implementation
+
+### When implementing this contract:
+
+1. **Start with domain layer**
+   - Pure User entity
+   - Validation functions
+   - No I/O, no side effects
+
+2. **Then app layer**
+   - Handlers that orchestrate
+   - Use domain entities
+   - Coordinate with infra
+
+3. **Finally infra layer**
+   - Database operations
+   - External service calls
+   - Token management
+
+4. **Add tests for each layer**
+   - Unit tests for domain
+   - Integration tests for app
+   - Repository tests for infra
+
+### Agent-specific notes:
+
+- Check if user functionality already exists before creating
+- Follow layer rules strictly (domain → app → infra)
+- Keep handlers under 300 lines
+- Extract validation to domain layer, not inline in handlers
+- All password operations happen in infra layer (hashing)
+
+---
+
+## Changes
+
+| Date | Version | Changes |
+|------|---------|---------|
+| 2025-11-02 | 1.0 | Initial contract |
